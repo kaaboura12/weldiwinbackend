@@ -154,8 +154,21 @@ export class AuthService {
     user.verificationCode = null;
     user.verificationCodeExpiresAt = null as any;
     await user.save({ validateModifiedOnly: true });
+    
+    // Generate JWT token for automatic login after verification
+    const payload = {
+      sub: (user._id as any).toString(),
+      email: user.email,
+      role: user.role,
+      type: 'user',
+    };
+    
     const { password, ...result } = user.toObject();
-    return { user: result, message: 'Account verified successfully' };
+    return { 
+      user: result, 
+      message: 'Account verified successfully',
+      access_token: this.jwtService.sign(payload)
+    };
   }
 
   async resendVerificationCode(dto: ResendCodeDto) {
