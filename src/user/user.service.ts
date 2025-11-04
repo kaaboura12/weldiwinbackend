@@ -88,10 +88,18 @@ export class UserService {
       delete updateUserDto.role;
     }
 
-    Object.assign(user, updateUserDto);
-    await user.save({ validateModifiedOnly: true });
-    const { password, ...result } = user.toObject();
-    return result as any;
+    // Use findByIdAndUpdate for partial updates - doesn't validate unmodified required fields
+    const updatedUser = await this.userModel.findByIdAndUpdate(
+      id,
+      { $set: updateUserDto },
+      { new: true, runValidators: true }
+    ).select('-password').exec();
+
+    if (!updatedUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    return updatedUser;
   }
 
   async remove(id: string, currentUser: any): Promise<void> {
