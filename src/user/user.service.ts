@@ -89,7 +89,7 @@ export class UserService {
     }
 
     Object.assign(user, updateUserDto);
-    await user.save();
+    await user.save({ validateModifiedOnly: true });
     const { password, ...result } = user.toObject();
     return result as any;
   }
