@@ -153,7 +153,7 @@ export class AuthService {
     user.isVerified = true;
     user.verificationCode = null;
     user.verificationCodeExpiresAt = null as any;
-    await user.save();
+    await user.save({ validateModifiedOnly: true });
     const { password, ...result } = user.toObject();
     return { user: result, message: 'Account verified successfully' };
   }
@@ -176,7 +176,7 @@ export class AuthService {
     user.verificationCodeExpiresAt = expiresAt as any;
     user.verificationChannel = channel as any;
     user.lastCodeSentAt = new Date();
-    await user.save();
+    await user.save({ validateModifiedOnly: true });
 
     if (channel === 'email') {
       await this.emailService.send(
@@ -201,7 +201,7 @@ export class AuthService {
     user.passwordResetCode = code;
     user.passwordResetExpiresAt = expiresAt as any;
     user.lastCodeSentAt = new Date();
-    await user.save();
+    await user.save({ validateModifiedOnly: true });
 
     if (channel === 'email') {
       await this.emailService.send(
@@ -230,7 +230,7 @@ export class AuthService {
     user.password = await bcrypt.hash(dto.newPassword, 10);
     user.passwordResetCode = null;
     user.passwordResetExpiresAt = null as any;
-    await user.save();
+    await user.save({ validateModifiedOnly: true });
     return { message: 'Password has been reset successfully' };
   }
 }
