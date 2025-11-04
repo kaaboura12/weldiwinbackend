@@ -1,0 +1,237 @@
+import { Injectable, ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import * as bcrypt from 'bcrypt';
+import { User, UserDocument, UserRole } from '../user/schemas/user.schema';
+import { Child, ChildDocument } from '../child/schemas/child.schema';
+import { RegisterDto } from './dto/register.dto';
+import { EmailService } from '../notification/email.service';
+import { SmsService } from '../notification/sms.service';
+import { VerifyAccountDto, ResendCodeDto, ForgotPasswordRequestDto, ResetPasswordDto } from './dto/verify.dto';
+import { LoginDto } from './dto/login.dto';
+
+@Injectable()
+export class AuthService {
+  constructor(
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(Child.name) private childModel: Model<ChildDocument>,
+    private jwtService: JwtService,
+    private emailService: EmailService,
+    private smsService: SmsService,
+  ) {}
+
+  private generateCode(length = 6): string {
+    const min = Math.pow(10, length - 1);
+    const max = Math.pow(10, length) - 1;
+    return Math.floor(Math.random() * (max - min + 1) + min).toString();
+  }
+
+  async register(registerDto: RegisterDto) {
+    const existingUser = await this.userModel.findOne({ email: registerDto.email });
+    if (existingUser) {
+      throw new ConflictException('User with this email already exists');
+    }
+
+    const hashedPassword = await bcrypt.hash(registerDto.password, 10);
+    const user = new this.userModel({
+      ...registerDto,
+      password: hashedPassword,
+      role: registerDto.role || UserRole.PARENT,
+      isVerified: false,
+    });
+
+    // Generate verification code
+    const code = this.generateCode(6);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    const channel: 'email' | 'sms' = registerDto.verificationChannel || 'email';
+
+    user.verificationCode = code;
+    user.verificationCodeExpiresAt = expiresAt as any;
+    user.verificationChannel = channel as any;
+    user.lastCodeSentAt = new Date();
+
+    await user.save();
+
+    // Send code
+    if (channel === 'email') {
+      await this.emailService.send(
+        user.email,
+        'Verify your WeldiWin account',
+        `<p>Hello ${user.firstName},</p><p>Your verification code is <b>${code}</b>. It expires in 15 minutes.</p>`
+      );
+    } else if (channel === 'sms') {
+      await this.smsService.send(
+        user.phoneNumber,
+        `WeldiWin verification code: ${code} (expires in 15 minutes)`
+      );
+    }
+
+    const { password, ...result } = user.toObject();
+    return {
+      user: result,
+      message: 'Registration successful. Verification code sent.',
+    };
+  }
+
+  async login(loginDto: LoginDto) {
+    // Try to find user first
+    let user = await this.userModel.findOne({ email: loginDto.email });
+    let type: 'user' | 'child' = 'user';
+    let entity: any = user;
+
+    // If not found, try to find child
+    if (!user) {
+      const child = await this.childModel.findOne({ email: loginDto.email });
+      if (!child) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+      entity = child;
+      type = 'child';
+    }
+
+    const isPasswordValid = await bcrypt.compare(loginDto.password, entity.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Check if user is active and verified
+    if (type === 'user' && entity.status !== 'ACTIVE') {
+      throw new UnauthorizedException('User account is inactive');
+    }
+
+    if (type === 'user' && !entity.isVerified) {
+      throw new UnauthorizedException('Account not verified');
+    }
+
+    if (type === 'child' && (!entity.isActive || entity.status !== 'ACTIVE')) {
+      throw new UnauthorizedException('Child account is inactive');
+    }
+
+    const payload = {
+      sub: (entity._id as any).toString(),
+      email: entity.email,
+      role: type === 'user' ? entity.role : 'CHILD',
+      type,
+    };
+
+    const { password, ...result } = entity.toObject();
+
+    return {
+      user: result,
+      access_token: this.jwtService.sign(payload),
+    };
+  }
+
+  async validateUser(email: string, password: string) {
+    const user = await this.userModel.findOne({ email });
+    if (user && await bcrypt.compare(password, user.password)) {
+      const { password, ...result } = user.toObject();
+      return result;
+    }
+    return null;
+  }
+
+  private async findUserByIdentifier(email?: string, phoneNumber?: string): Promise<UserDocument | null> {
+    if (email) return this.userModel.findOne({ email });
+    if (phoneNumber) return this.userModel.findOne({ phoneNumber });
+    return null;
+  }
+
+  async verifyAccount(dto: VerifyAccountDto) {
+    const user = await this.findUserByIdentifier(dto.email, dto.phoneNumber);
+    if (!user) throw new UnauthorizedException('User not found');
+    if (!user.verificationCode || !user.verificationCodeExpiresAt) {
+      throw new BadRequestException('No verification in progress');
+    }
+    if (new Date(user.verificationCodeExpiresAt).getTime() < Date.now()) {
+      throw new BadRequestException('Verification code expired');
+    }
+    if (user.verificationCode !== dto.code) {
+      throw new UnauthorizedException('Invalid verification code');
+    }
+    user.isVerified = true;
+    user.verificationCode = null;
+    user.verificationCodeExpiresAt = null as any;
+    await user.save();
+    const { password, ...result } = user.toObject();
+    return { user: result, message: 'Account verified successfully' };
+  }
+
+  async resendVerificationCode(dto: ResendCodeDto) {
+    const user = await this.findUserByIdentifier(dto.email, dto.phoneNumber);
+    if (!user) throw new UnauthorizedException('User not found');
+    if (user.isVerified) return { message: 'Account already verified' };
+
+    // rate limit: 60 seconds
+    if (user.lastCodeSentAt && Date.now() - new Date(user.lastCodeSentAt).getTime() < 60_000) {
+      throw new BadRequestException('Please wait before requesting another code');
+    }
+
+    const code = this.generateCode(6);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    const channel: 'email' | 'sms' = dto.channel || user.verificationChannel || 'email';
+
+    user.verificationCode = code;
+    user.verificationCodeExpiresAt = expiresAt as any;
+    user.verificationChannel = channel as any;
+    user.lastCodeSentAt = new Date();
+    await user.save();
+
+    if (channel === 'email') {
+      await this.emailService.send(
+        user.email,
+        'Your verification code',
+        `<p>Your verification code is <b>${code}</b>. It expires in 15 minutes.</p>`
+      );
+    } else {
+      await this.smsService.send(user.phoneNumber, `Verification code: ${code} (expires in 15 minutes)`);
+    }
+    return { message: 'Verification code sent' };
+  }
+
+  async requestPasswordReset(dto: ForgotPasswordRequestDto) {
+    const user = await this.findUserByIdentifier(dto.email, dto.phoneNumber);
+    if (!user) return { message: 'If an account exists, a code has been sent' };
+
+    const code = this.generateCode(6);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    const channel: 'email' | 'sms' = dto.channel || 'email';
+
+    user.passwordResetCode = code;
+    user.passwordResetExpiresAt = expiresAt as any;
+    user.lastCodeSentAt = new Date();
+    await user.save();
+
+    if (channel === 'email') {
+      await this.emailService.send(
+        user.email,
+        'Reset your password',
+        `<p>Your password reset code is <b>${code}</b>. It expires in 15 minutes.</p>`
+      );
+    } else {
+      await this.smsService.send(user.phoneNumber, `Password reset code: ${code} (15 minutes)`);
+    }
+    return { message: 'If an account exists, a code has been sent' };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const user = await this.findUserByIdentifier(dto.email, dto.phoneNumber);
+    if (!user) throw new UnauthorizedException('Invalid reset code');
+    if (!user.passwordResetCode || !user.passwordResetExpiresAt) {
+      throw new BadRequestException('No reset in progress');
+    }
+    if (new Date(user.passwordResetExpiresAt).getTime() < Date.now()) {
+      throw new BadRequestException('Reset code expired');
+    }
+    if (user.passwordResetCode !== dto.code) {
+      throw new UnauthorizedException('Invalid reset code');
+    }
+    user.password = await bcrypt.hash(dto.newPassword, 10);
+    user.passwordResetCode = null;
+    user.passwordResetExpiresAt = null as any;
+    await user.save();
+    return { message: 'Password has been reset successfully' };
+  }
+}
+
