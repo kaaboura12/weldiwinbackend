@@ -11,8 +11,17 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
   handleRequest(err: any, user: any, info: any) {
     // You can throw an exception based on "info" or "err" arguments
-    if (err || !user) {
-      throw err || new UnauthorizedException('Authentication required. Please provide a valid token.');
+    if (err) {
+      // Log the actual error for debugging
+      console.error('JWT Auth Error:', err.message || err);
+      throw err;
+    }
+    if (!user) {
+      // Log info about why user is missing
+      console.error('JWT Auth Info:', info?.message || info);
+      throw new UnauthorizedException(
+        info?.message || 'Authentication required. Please provide a valid token. Make sure you are logged in and the token is sent in the Authorization header as: Bearer <token>'
+      );
     }
     return user;
   }

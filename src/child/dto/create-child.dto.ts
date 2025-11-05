@@ -1,13 +1,23 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsDate, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength, IsMongoId } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, IsMongoId, IsArray, IsNumber, IsBoolean, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ChildGender, ChildStatus } from '../schemas/child.schema';
+import { DeviceType, ChildStatus } from '../schemas/child.schema';
+
+class LocationDto {
+  @ApiProperty({ example: 37.7749 })
+  @IsNumber()
+  lat: number;
+
+  @ApiProperty({ example: -122.4194 })
+  @IsNumber()
+  lng: number;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  updatedAt?: Date;
+}
 
 export class CreateChildDto {
-  @ApiProperty({ required: false, description: 'Parent user ID (only for ADMIN)' })
-  @IsOptional()
-  @IsMongoId()
-  user_id?: string;
   @ApiProperty({ example: 'Jane' })
   @IsNotEmpty()
   @IsString()
@@ -18,45 +28,51 @@ export class CreateChildDto {
   @IsString()
   lastName: string;
 
-  @ApiProperty({ example: '2015-05-15' })
-  @IsNotEmpty()
-  @IsDate()
-  @Type(() => Date)
-  dateOfBirth: Date;
+  @ApiProperty({ required: false, description: 'Parent user ID (only for ADMIN, otherwise uses current user)' })
+  @IsOptional()
+  @IsMongoId()
+  parent?: string;
 
-  @ApiProperty({ enum: ChildGender, example: ChildGender.FEMALE })
-  @IsEnum(ChildGender)
-  @IsNotEmpty()
-  gender: ChildGender;
+  @ApiProperty({ required: false, description: 'Array of additional parent IDs', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true })
+  linkedParents?: string[];
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
   avatarUrl?: string;
 
+  @ApiProperty({ required: false, type: LocationDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LocationDto)
+  location?: LocationDto;
+
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
-  location?: string;
+  deviceId?: string;
 
-  @ApiProperty({ required: false, default: true })
+  @ApiProperty({ enum: DeviceType, required: false, default: DeviceType.PHONE })
   @IsOptional()
-  isActive?: boolean;
+  @IsEnum(DeviceType)
+  deviceType?: DeviceType;
 
-  @ApiProperty({ enum: ChildStatus, required: false })
+  @ApiProperty({ required: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  isOnline?: boolean;
+
+  @ApiProperty({ enum: ChildStatus, required: false, default: ChildStatus.ACTIVE })
   @IsOptional()
   @IsEnum(ChildStatus)
   status?: ChildStatus;
 
-  @ApiProperty({ example: 'jane.doe@example.com' })
-  @IsEmail()
-  @IsNotEmpty()
-  email: string;
-
-  @ApiProperty({ example: 'password123', minLength: 6 })
-  @IsNotEmpty()
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsString()
-  @MinLength(6)
-  password: string;
+  qrCode?: string;
 }
 

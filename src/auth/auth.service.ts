@@ -75,47 +75,35 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
-    // Try to find user first
-    let user = await this.userModel.findOne({ email: loginDto.email });
-    let type: 'user' | 'child' = 'user';
-    let entity: any = user;
-
-    // If not found, try to find child
+    // Only users can login via email/password (children use QR code)
+    const user = await this.userModel.findOne({ email: loginDto.email });
     if (!user) {
-      const child = await this.childModel.findOne({ email: loginDto.email });
-      if (!child) {
-        throw new UnauthorizedException('Invalid credentials');
-      }
-      entity = child;
-      type = 'child';
+      throw new UnauthorizedException('Invalid credentials');
     }
 
-    const isPasswordValid = await bcrypt.compare(loginDto.password, entity.password);
+    const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
     // Check if user is active and verified
-    if (type === 'user' && entity.status !== 'ACTIVE') {
+    if (user.status !== 'ACTIVE') {
       throw new UnauthorizedException('User account is inactive');
     }
 
-    if (type === 'user' && !entity.isVerified) {
-      throw new UnauthorizedException('Account not verified');
-    }
-
-    if (type === 'child' && (!entity.isActive || entity.status !== 'ACTIVE')) {
-      throw new UnauthorizedException('Child account is inactive');
-    }
+    // ⚠️ COMMENTED OUT - Allow unverified users to login
+    // if (!user.isVerified) {
+    //   throw new UnauthorizedException('Account not verified');
+    // }
 
     const payload = {
-      sub: (entity._id as any).toString(),
-      email: entity.email,
-      role: type === 'user' ? entity.role : 'CHILD',
-      type,
+      sub: (user._id as any).toString(),
+      email: user.email,
+      role: user.role,
+      type: 'user',
     };
 
-    const { password, ...result } = entity.toObject();
+    const { password, ...result } = user.toObject();
 
     return {
       user: result,

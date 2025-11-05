@@ -1,7 +1,21 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsDate, IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsArray, IsMongoId, IsNumber, IsBoolean, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ChildGender, ChildStatus } from '../schemas/child.schema';
+import { DeviceType, ChildStatus } from '../schemas/child.schema';
+
+class LocationDto {
+  @ApiProperty({ example: 37.7749 })
+  @IsNumber()
+  lat: number;
+
+  @ApiProperty({ example: -122.4194 })
+  @IsNumber()
+  lng: number;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  updatedAt?: Date;
+}
 
 export class UpdateChildDto {
   @ApiProperty({ required: false })
@@ -14,30 +28,37 @@ export class UpdateChildDto {
   @IsString()
   lastName?: string;
 
-  @ApiProperty({ required: false })
+  @ApiProperty({ required: false, description: 'Array of linked parent IDs', type: [String] })
   @IsOptional()
-  @IsDate()
-  @Type(() => Date)
-  dateOfBirth?: Date;
-
-  @ApiProperty({ enum: ChildGender, required: false })
-  @IsOptional()
-  @IsEnum(ChildGender)
-  gender?: ChildGender;
+  @IsArray()
+  @IsMongoId({ each: true })
+  linkedParents?: string[];
 
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
   avatarUrl?: string;
 
-  @ApiProperty({ required: false })
+  @ApiProperty({ required: false, type: LocationDto })
   @IsOptional()
-  @IsString()
-  location?: string;
+  @ValidateNested()
+  @Type(() => LocationDto)
+  location?: LocationDto;
 
   @ApiProperty({ required: false })
   @IsOptional()
-  isActive?: boolean;
+  @IsString()
+  deviceId?: string;
+
+  @ApiProperty({ enum: DeviceType, required: false })
+  @IsOptional()
+  @IsEnum(DeviceType)
+  deviceType?: DeviceType;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsBoolean()
+  isOnline?: boolean;
 
   @ApiProperty({ enum: ChildStatus, required: false })
   @IsOptional()
@@ -46,13 +67,7 @@ export class UpdateChildDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsEmail()
-  email?: string;
-
-  @ApiProperty({ required: false, minLength: 6 })
-  @IsOptional()
   @IsString()
-  @MinLength(6)
-  password?: string;
+  qrCode?: string;
 }
 

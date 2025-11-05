@@ -4,10 +4,9 @@ import { User } from '../../user/schemas/user.schema';
 
 export type ChildDocument = Child & Document;
 
-export enum ChildGender {
-  MALE = 'MALE',
-  FEMALE = 'FEMALE',
-  OTHER = 'OTHER',
+export enum DeviceType {
+  PHONE = 'PHONE',
+  WATCH = 'WATCH',
 }
 
 export enum ChildStatus {
@@ -17,38 +16,45 @@ export enum ChildStatus {
 
 @Schema({ timestamps: true })
 export class Child {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
-  user_id: Types.ObjectId;
-
   @Prop({ required: true })
   firstName: string;
 
   @Prop({ required: true })
   lastName: string;
 
-  @Prop({ required: true })
-  dateOfBirth: Date;
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  parent: Types.ObjectId; // main linked parent (father/mother)
 
-  @Prop({ required: true, enum: ChildGender })
-  gender: ChildGender;
+  @Prop({ type: [Types.ObjectId], ref: 'User', default: [] })
+  linkedParents: Types.ObjectId[]; // other linked parents (e.g. mom + dad)
 
   @Prop({ default: null })
   avatarUrl: string;
 
-  @Prop({ default: null })
-  location: string;
+  @Prop({
+    type: {
+      lat: { type: Number },
+      lng: { type: Number },
+      updatedAt: { type: Date },
+    },
+    default: null,
+  })
+  location?: { lat: number; lng: number; updatedAt: Date };
 
-  @Prop({ default: true })
-  isActive: boolean;
+  @Prop({ default: null })
+  deviceId: string; // e.g. iPhone or Apple Watch unique ID
+
+  @Prop({ enum: DeviceType, default: DeviceType.PHONE })
+  deviceType: DeviceType;
+
+  @Prop({ default: false })
+  isOnline: boolean;
 
   @Prop({ enum: ChildStatus, default: ChildStatus.ACTIVE })
   status: ChildStatus;
 
-  @Prop({ required: true, unique: true, lowercase: true })
-  email: string;
-
-  @Prop({ required: true })
-  password: string;
+  @Prop({ type: String, default: null })
+  qrCode: string | null; // QR used for child login or linking
 
   @Prop({ type: Object, default: {} })
   additionalAttributes: Record<string, any>;
