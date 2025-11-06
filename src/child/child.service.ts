@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import * as crypto from 'crypto';
 import { Child, ChildDocument } from './schemas/child.schema';
 import { User, UserRole } from '../user/schemas/user.schema';
 import { CreateChildDto } from './dto/create-child.dto';
@@ -41,12 +42,24 @@ export class ChildService {
     }
 
     const { parent: parentFromDto, ...childData } = createChildDto;
+    
+    // Generate unique QR code for child login if not provided
+    let qrCode = createChildDto.qrCode;
+    if (!qrCode) {
+      // Generate a secure random QR code (32 characters)
+      qrCode = crypto.randomBytes(16).toString('hex');
+    }
+    
     const child = new this.childModel({
       ...childData,
       parent: parentId,
+      qrCode,
     });
 
-    return child.save();
+    const savedChild = await child.save();
+    
+    // Return child with QR code included (for parent to use for child login)
+    return savedChild;
   }
 
   async findAll(currentUser: any): Promise<Child[]> {

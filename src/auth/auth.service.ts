@@ -120,6 +120,33 @@ export class AuthService {
     return null;
   }
 
+  async loginWithQrCode(qrCode: string) {
+    // Find child by QR code
+    const child = await this.childModel.findOne({ qrCode });
+    if (!child) {
+      throw new UnauthorizedException('Invalid QR code');
+    }
+
+    // Check if child is active
+    if (child.status !== 'ACTIVE') {
+      throw new UnauthorizedException('Child account is inactive');
+    }
+
+    // Generate JWT token for child
+    const payload = {
+      sub: (child._id as any).toString(),
+      role: 'CHILD',
+      type: 'child',
+    };
+
+    const { qrCode: qr, ...result } = child.toObject();
+
+    return {
+      child: result,
+      access_token: this.jwtService.sign(payload),
+    };
+  }
+
   private async findUserByIdentifier(email?: string, phoneNumber?: string): Promise<UserDocument | null> {
     if (email) return this.userModel.findOne({ email });
     if (phoneNumber) return this.userModel.findOne({ phoneNumber });

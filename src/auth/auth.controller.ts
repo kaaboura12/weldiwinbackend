@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { QrLoginDto } from './dto/qr-login.dto';
 import { VerifyAccountDto, ResendCodeDto, ForgotPasswordRequestDto, ResetPasswordDto } from './dto/verify.dto';
 
 @ApiTags('Authentication')
@@ -19,11 +20,19 @@ export class AuthController {
   }
 
   @Post('login')
-  @ApiOperation({ summary: 'Login user or child' })
+  @ApiOperation({ summary: 'Login user with email/password' })
   @ApiResponse({ status: 200, description: 'Successfully logged in' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
+  }
+
+  @Post('login/qr')
+  @ApiOperation({ summary: 'Login child with QR code' })
+  @ApiResponse({ status: 200, description: 'Child successfully logged in' })
+  @ApiResponse({ status: 401, description: 'Invalid QR code' })
+  async loginWithQr(@Body() qrLoginDto: QrLoginDto) {
+    return this.authService.loginWithQrCode(qrLoginDto.qrCode);
   }
 
   @Post('verify')
