@@ -36,7 +36,6 @@ export class ChildController {
   @ApiOperation({ summary: 'Create a new child (ADMIN and PARENT only - PARENT creates for themselves, ADMIN can create for any parent)' })
   @ApiResponse({ status: 201, description: 'Child successfully created' })
   @ApiResponse({ status: 403, description: 'Forbidden - Only PARENT or ADMIN can create children' })
-  @ApiResponse({ status: 409, description: 'Child with this email already exists' })
   create(@Body() createChildDto: CreateChildDto, @CurrentUser() currentUser: any) {
     return this.childService.create(createChildDto, currentUser);
   }
