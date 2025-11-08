@@ -3,6 +3,8 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcrypt';
+import { OAuth2Client } from 'google-auth-library';
+import { ConfigService } from '@nestjs/config';
 import { User, UserDocument, UserRole } from '../user/schemas/user.schema';
 import { Child, ChildDocument } from '../child/schemas/child.schema';
 import { RegisterDto } from './dto/register.dto';
@@ -10,16 +12,24 @@ import { EmailService } from '../notification/email.service';
 import { SmsService } from '../notification/sms.service';
 import { VerifyAccountDto, ResendCodeDto, ForgotPasswordRequestDto, ResetPasswordDto } from './dto/verify.dto';
 import { LoginDto } from './dto/login.dto';
+import { GoogleAuthDto } from './dto/google-auth.dto';
 
 @Injectable()
 export class AuthService {
+  private googleClient: OAuth2Client;
+
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Child.name) private childModel: Model<ChildDocument>,
     private jwtService: JwtService,
     private emailService: EmailService,
     private smsService: SmsService,
-  ) {}
+    private configService: ConfigService,
+  ) {
+    // Initialize Google OAuth client
+    const googleClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    this.googleClient = new OAuth2Client(googleClientId);
+  }
 
   private generateCode(length = 6): string {
     const min = Math.pow(10, length - 1);
@@ -260,6 +270,83 @@ export class AuthService {
     user.passwordResetExpiresAt = null as any;
     await user.save({ validateModifiedOnly: true });
     return { message: 'Password has been reset successfully' };
+  }
+
+  async googleAuth(googleAuthDto: GoogleAuthDto) {
+    try {
+      // Verify the Google ID token
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken: googleAuthDto.idToken,
+        audience: this.configService.get<string>('GOOGLE_CLIENT_ID'),
+      });
+
+      const payload = ticket.getPayload();
+      if (!payload) {
+        throw new UnauthorizedException('Invalid Google token');
+      }
+
+      const { email, given_name, family_name, picture, sub: googleId } = payload;
+
+      if (!email) {
+        throw new BadRequestException('Email not provided by Google');
+      }
+
+      // Check if user exists
+      let user = await this.userModel.findOne({ email });
+
+      if (!user) {
+        // Create new user with Google Sign-In
+        user = new this.userModel({
+          email,
+          firstName: given_name || 'User',
+          lastName: family_name || '',
+          password: await bcrypt.hash(Math.random().toString(36), 10), // Random password (won't be used)
+          role: UserRole.PARENT,
+          isVerified: true, // Google accounts are pre-verified
+          status: 'ACTIVE',
+          avatarUrl: picture || null,
+          googleId,
+        });
+        await user.save();
+      } else {
+        // Update existing user with Google ID if not set
+        if (!user.googleId) {
+          user.googleId = googleId;
+          user.isVerified = true; // Verify user if they sign in with Google
+          if (picture && !user.avatarUrl) {
+            user.avatarUrl = picture;
+          }
+          await user.save({ validateModifiedOnly: true });
+        }
+      }
+
+      // Check user status
+      if (user.status !== 'ACTIVE') {
+        throw new UnauthorizedException('User account is not active');
+      }
+
+      // Generate JWT token
+      const token = this.jwtService.sign({
+        sub: (user._id as any).toString(),
+        email: user.email,
+        role: user.role,
+        type: 'user',
+      });
+
+      return {
+        access_token: token,
+        user: {
+          _id: (user._id as any).toString(),
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          role: user.role,
+        },
+      };
+    } catch (error: any) {
+      console.error('Google Auth Error:', error.message);
+      throw new UnauthorizedException('Google authentication failed: ' + error.message);
+    }
   }
 }
 

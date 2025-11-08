@@ -25,7 +25,7 @@ export class User {
   @Prop({ required: true, unique: true, lowercase: true })
   email: string;
 
-  @Prop({ required: true })
+  @Prop({ required: false, default: null })
   phoneNumber: string;
 
   @Prop({ required: true })
@@ -60,6 +60,9 @@ export class User {
 
   @Prop({ type: Date, default: null })
   lastCodeSentAt: Date | null;
+
+  @Prop({ type: String, default: null, unique: true, sparse: true })
+  googleId: string | null;
 
   @Prop({ type: Object, default: {} })
   additionalAttributes: Record<string, any>;
