@@ -18,6 +18,7 @@ import {
 import { ChildService } from './child.service';
 import { CreateChildDto } from './dto/create-child.dto';
 import { UpdateChildDto } from './dto/update-child.dto';
+import { UpdateChildLocationDto } from './dto/update-child-location.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -86,6 +87,20 @@ export class ChildController {
     @CurrentUser() currentUser: any,
   ) {
     return this.childService.update(id, updateChildDto, currentUser);
+  }
+
+  @Patch(':id/location')
+  @ApiOperation({ summary: 'Update child location (ADMIN, PARENT for their child, or CHILD themselves)' })
+  @ApiParam({ name: 'id', description: 'Child ID' })
+  @ApiResponse({ status: 200, description: 'Child location updated' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Cannot update this child location' })
+  @ApiResponse({ status: 404, description: 'Child not found' })
+  updateLocation(
+    @Param('id') id: string,
+    @Body() updateChildLocationDto: UpdateChildLocationDto,
+    @CurrentUser() currentUser: any,
+  ) {
+    return this.childService.updateLocation(id, updateChildLocationDto, currentUser);
   }
 
   @Delete(':id')

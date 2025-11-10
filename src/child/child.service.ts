@@ -6,6 +6,7 @@ import { Child, ChildDocument } from './schemas/child.schema';
 import { User, UserRole } from '../user/schemas/user.schema';
 import { CreateChildDto } from './dto/create-child.dto';
 import { UpdateChildDto } from './dto/update-child.dto';
+import { UpdateChildLocationDto } from './dto/update-child-location.dto';
 
 @Injectable()
 export class ChildService {
@@ -191,5 +192,41 @@ export class ChildService {
         { linkedParents: parentId }
       ]
     }).populate('parent', '-password').populate('linkedParents', '-password').exec();
+  }
+
+  async updateLocation(id: string, updateChildLocationDto: UpdateChildLocationDto, currentUser: any): Promise<Child> {
+    const child = await this.childModel.findById(id);
+    if (!child) {
+      throw new NotFoundException('Child not found');
+    }
+
+    if (currentUser.role !== UserRole.ADMIN) {
+      if (currentUser.type === 'child') {
+        if (currentUser.id !== id) {
+          throw new ForbiddenException('You can only update your own location');
+        }
+      } else {
+        const isParent = child.parent.toString() === currentUser.id;
+        const isLinkedParent = child.linkedParents.some(p => p.toString() === currentUser.id);
+
+        if (!isParent && !isLinkedParent) {
+          throw new ForbiddenException('You can only update your own children');
+        }
+      }
+    }
+
+    child.location = {
+      lat: updateChildLocationDto.lat,
+      lng: updateChildLocationDto.lng,
+      updatedAt: new Date(),
+    } as any;
+
+    await child.save({ validateModifiedOnly: true });
+
+    const updatedChild = await this.childModel.findById(id).populate('parent', '-password').populate('linkedParents', '-password').exec();
+    if (!updatedChild) {
+      throw new NotFoundException('Child not found after updating location');
+    }
+    return updatedChild;
   }
 }
