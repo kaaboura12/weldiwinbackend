@@ -2,6 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { join } from 'path';
+import * as express from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -21,6 +23,10 @@ async function bootstrap() {
     origin: process.env.NODE_ENV === 'production' ? process.env.FRONTEND_URL : true,
     credentials: true,
   });
+
+  // Serve uploaded audio files
+  const httpApp = app.getHttpAdapter().getInstance();
+  httpApp.use('/uploads/audio', express.static(join(process.cwd(), 'uploads', 'audio')));
 
   // Swagger Configuration (only in development)
   if (process.env.NODE_ENV !== 'production') {

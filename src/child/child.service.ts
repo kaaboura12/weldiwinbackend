@@ -1,9 +1,10 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import * as crypto from 'crypto';
 import { Child, ChildDocument } from './schemas/child.schema';
 import { User, UserRole } from '../user/schemas/user.schema';
+import { Room, RoomDocument } from '../message/schemas/room.schema';
 import { CreateChildDto } from './dto/create-child.dto';
 import { UpdateChildDto } from './dto/update-child.dto';
 
@@ -12,6 +13,7 @@ export class ChildService {
   constructor(
     @InjectModel(Child.name) private childModel: Model<ChildDocument>,
     @InjectModel(User.name) private userModel: Model<any>,
+    @InjectModel(Room.name) private roomModel: Model<RoomDocument>,
   ) {}
 
   async create(createChildDto: CreateChildDto, currentUser: any): Promise<Child> {
@@ -57,6 +59,20 @@ export class ChildService {
     });
 
     const savedChild = await child.save();
+    
+    // Auto-create room for parent-child pair
+    try {
+      await this.roomModel.create({
+        parent: new Types.ObjectId(parentId),
+        child: savedChild._id,
+        isActive: true,
+      });
+    } catch (error: any) {
+      // Ignore if room already exists (unique constraint)
+      if (error.code !== 11000) {
+        console.error('Error creating room for child:', error.message);
+      }
+    }
     
     // Return child with QR code included (for parent to use for child login)
     return savedChild;

@@ -6,12 +6,14 @@ import { ChildService } from './child.service';
 import { ChildController } from './child.controller';
 import { Child, ChildSchema } from './schemas/child.schema';
 import { User, UserSchema } from '../user/schemas/user.schema';
+import { Room, RoomSchema } from '../message/schemas/room.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Child.name, schema: ChildSchema },
       { name: User.name, schema: UserSchema },
+      { name: Room.name, schema: RoomSchema },
     ]),
   ],
   controllers: [ChildController],
