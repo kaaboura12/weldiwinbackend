@@ -61,7 +61,7 @@ export class User {
   @Prop({ type: Date, default: null })
   lastCodeSentAt: Date | null;
 
-  @Prop({ type: String, default: null, unique: true, sparse: true })
+  @Prop({ type: String, default: null, unique: false, sparse: true })
   googleId: string | null;
 
   @Prop({ type: Object, default: {} })
