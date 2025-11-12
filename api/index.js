@@ -1,3 +1,5 @@
-module.exports = require('../dist/vercel').default;
+const vercelModule = require('../dist/vercel.js');
+const handler = vercelModule.default || vercelModule;
+module.exports = handler;
 
 
