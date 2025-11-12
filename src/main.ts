@@ -24,9 +24,12 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Serve uploaded audio files
-  const httpApp = app.getHttpAdapter().getInstance();
-  httpApp.use('/uploads/audio', express.static(join(process.cwd(), 'uploads', 'audio')));
+  // Serve uploaded audio files (only in non-serverless environments)
+  // On serverless (Vercel), files are stored as base64 data URLs
+  if (process.env.VERCEL !== '1') {
+    const httpApp = app.getHttpAdapter().getInstance();
+    httpApp.use('/uploads/audio', express.static(join(process.cwd(), 'uploads', 'audio')));
+  }
 
   // Swagger Configuration (only in development)
   if (process.env.NODE_ENV !== 'production') {

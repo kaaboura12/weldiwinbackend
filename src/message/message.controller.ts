@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import { memoryStorage } from 'multer';
 import { extname } from 'path';
 import { MessageService } from './message.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -143,13 +143,7 @@ export class MessageController {
   })
   @ApiResponse({ status: 201, description: 'Audio message sent successfully' })
   @UseInterceptors(FileInterceptor('file', {
-    storage: diskStorage({
-      destination: './uploads/audio',
-      filename: (req, file, cb) => {
-        const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        cb(null, unique + extname(file.originalname));
-      },
-    }),
+    storage: memoryStorage(),
     limits: { fileSize: 20 * 1024 * 1024 },
   }))
   async sendAudio(
@@ -166,7 +160,18 @@ export class MessageController {
       throw new BadRequestException('senderModel must be "User" or "Child"');
     }
     this.assertObjectId(body.senderId, 'senderId');
-    const url = `/uploads/audio/${file.filename}`;
+    
+    // For serverless environments, convert file to base64 data URL
+    // In production, you should upload to cloud storage (S3, Cloudinary, etc.)
+    const fileExtension = extname(file.originalname);
+    const base64Data = file.buffer.toString('base64');
+    const dataUrl = `data:${file.mimetype};base64,${base64Data}`;
+    
+    // Use data URL for serverless, or cloud storage URL in production
+    const url = process.env.NODE_ENV === 'production' && process.env.CLOUD_STORAGE_URL
+      ? `${process.env.CLOUD_STORAGE_URL}/${Date.now()}-${Math.round(Math.random() * 1e9)}${fileExtension}`
+      : dataUrl;
+    
     return this.messageService.sendAudio(
       {
         roomId,
