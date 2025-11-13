@@ -37,6 +37,7 @@ export class Message {
       durationSec: { type: Number, default: null },
       mimeType: { type: String, default: null },
       sizeBytes: { type: Number, default: null },
+      cloudinaryPublicId: { type: String, default: null },
     },
     default: {},
   })
@@ -45,6 +46,7 @@ export class Message {
     durationSec: number | null;
     mimeType: string | null;
     sizeBytes: number | null;
+    cloudinaryPublicId?: string | null;
   };
 
   // For call signaling messages (SDP or ICE)

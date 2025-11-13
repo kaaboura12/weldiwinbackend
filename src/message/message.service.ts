@@ -22,6 +22,7 @@ interface SendAudioDto {
     durationSec?: number | null;
     mimeType?: string | null;
     sizeBytes?: number | null;
+    cloudinaryPublicId?: string | null;
   };
 }
 
@@ -320,6 +321,46 @@ export class MessageService {
       query._id = { $lt: new Types.ObjectId(beforeId) };
     }
     return this.messageModel.find(query).sort({ _id: -1 }).limit(limit).lean();
+  }
+
+  /**
+   * List audio (vocal) messages in a room with optional sender filters
+   */
+  async listAudioMessages(
+    roomId: string,
+    currentUser: any,
+    options?: { sender?: 'parent' | 'child' | 'me' | 'all' },
+  ): Promise<any[]> {
+    const room = await this.roomModel.findById(roomId);
+    if (!room) {
+      throw new NotFoundException('Room not found');
+    }
+    await this.assertRoomAccess(room, currentUser);
+
+    const query: any = {
+      room: room._id,
+      type: MessageType.AUDIO,
+    };
+
+    switch (options?.sender) {
+      case 'parent':
+        query.senderModel = 'User';
+        break;
+      case 'child':
+        query.senderModel = 'Child';
+        break;
+      case 'me':
+        query.senderModel = currentUser.type === 'child' ? 'Child' : 'User';
+        query.senderId = new Types.ObjectId(currentUser.id);
+        break;
+      default:
+        break;
+    }
+
+    return this.messageModel
+      .find(query)
+      .sort({ createdAt: -1 })
+      .lean();
   }
 
   /**

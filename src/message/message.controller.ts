@@ -1,18 +1,34 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  InternalServerErrorException,
+  Param,
+  Post,
+  Query,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { extname } from 'path';
 import { MessageService } from './message.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/user.decorator';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { CloudinaryService } from './cloudinary.service';
 
 @ApiTags('Messages')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('messages')
 export class MessageController {
-  constructor(private readonly messageService: MessageService) {}
+  constructor(
+    private readonly messageService: MessageService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
   
   private assertObjectId(id: string, name: string) {
     if (!/^[a-fA-F0-9]{24}$/.test(id)) {
@@ -78,6 +94,31 @@ export class MessageController {
       throw new BadRequestException('beforeId must be a 24-char hex Mongo ObjectId');
     }
     return this.messageService.listMessages(roomId, currentUser, parsedLimit, beforeId);
+  }
+
+  /**
+   * List audio (vocal) messages in a room
+   */
+  @Get('room/:roomId/audio')
+  @ApiOperation({ summary: 'List audio (vocal) messages in a room' })
+  @ApiParam({ name: 'roomId', description: 'Room ID' })
+  @ApiQuery({
+    name: 'sender',
+    required: false,
+    description: 'Filter by sender: parent | child | me | all (default all)',
+    enum: ['parent', 'child', 'me', 'all'],
+  })
+  @ApiResponse({ status: 200, description: 'List of audio messages' })
+  async listAudioMessages(
+    @Param('roomId') roomId: string,
+    @CurrentUser() currentUser: any,
+    @Query('sender') sender?: 'parent' | 'child' | 'me' | 'all',
+  ) {
+    this.assertObjectId(roomId, 'roomId');
+    if (sender && !['parent', 'child', 'me', 'all'].includes(sender)) {
+      throw new BadRequestException('sender must be parent, child, me, or all');
+    }
+    return this.messageService.listAudioMessages(roomId, currentUser, { sender });
   }
 
   /**
@@ -160,28 +201,46 @@ export class MessageController {
       throw new BadRequestException('senderModel must be "User" or "Child"');
     }
     this.assertObjectId(body.senderId, 'senderId');
-    
-    // For serverless environments, convert file to base64 data URL
-    // In production, you should upload to cloud storage (S3, Cloudinary, etc.)
-    const fileExtension = extname(file.originalname);
-    const base64Data = file.buffer.toString('base64');
-    const dataUrl = `data:${file.mimetype};base64,${base64Data}`;
-    
-    // Use data URL for serverless, or cloud storage URL in production
-    const url = process.env.NODE_ENV === 'production' && process.env.CLOUD_STORAGE_URL
-      ? `${process.env.CLOUD_STORAGE_URL}/${Date.now()}-${Math.round(Math.random() * 1e9)}${fileExtension}`
-      : dataUrl;
-    
+
+    let uploadUrl: string;
+    let cloudinaryPublicId: string | null = null;
+
+    if (this.cloudinaryService.enabled()) {
+      try {
+        const uploadResult = await this.cloudinaryService.uploadAudio(file, {
+          folder: `weldiwin/messages/rooms/${roomId}`,
+        });
+        uploadUrl = uploadResult.secure_url ?? uploadResult.url;
+        cloudinaryPublicId = uploadResult.public_id ?? null;
+      } catch (error: any) {
+        throw new InternalServerErrorException(
+          `Failed to upload audio to Cloudinary: ${error?.message ?? 'Unknown error'}`,
+        );
+      }
+    } else {
+      // Fall back to base64 data URL (primarily for local/serverless development)
+      const base64Data = file.buffer.toString('base64');
+      uploadUrl = `data:${file.mimetype};base64,${base64Data}`;
+    }
+
+    const durationValue =
+      typeof body.durationSec === 'string'
+        ? Number(body.durationSec)
+        : typeof body.durationSec === 'number'
+          ? body.durationSec
+          : null;
+
     return this.messageService.sendAudio(
       {
         roomId,
         senderModel: body.senderModel,
         senderId: body.senderId,
         audio: {
-          url,
-          durationSec: body.durationSec ? Number(body.durationSec) : null,
+          url: uploadUrl,
+          durationSec: durationValue && Number.isFinite(durationValue) ? durationValue : null,
           mimeType: file.mimetype,
           sizeBytes: file.size,
+          cloudinaryPublicId,
         },
       },
       currentUser,

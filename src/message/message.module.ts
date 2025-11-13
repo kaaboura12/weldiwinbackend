@@ -9,6 +9,7 @@ import { Room, RoomSchema } from './schemas/room.schema';
 import { Child, ChildSchema } from '../child/schemas/child.schema';
 import { User, UserSchema } from '../user/schemas/user.schema';
 import { ChatGateway } from './gateway/chat.gateway';
+import { CloudinaryService } from './cloudinary.service';
 
 @Module({
   imports: [
@@ -31,7 +32,7 @@ import { ChatGateway } from './gateway/chat.gateway';
     }),
   ],
   controllers: [MessageController],
-  providers: [MessageService, ChatGateway],
+  providers: [MessageService, ChatGateway, CloudinaryService],
   exports: [MessageService],
 })
 export class MessageModule {}
